@@ -1,0 +1,44 @@
+// use std::str::FromStr;
+// use crate::ast::{Timestamp, SleepEvent, GuardEvents};
+
+grammar;
+
+// Num: i32 = <s:r"[0-9]+"> => i32::from_str(s).unwrap();
+//
+// Timestamp: Timestamp = "[" <year:Num> "-" <month:Num> "-" <day:Num> <hour:Num> ":" <min:Num> "]" => Timestamp{<>};
+// GuardLine: i32 = Timestamp "Guard" "#" <Num> "begins" "shift";
+// SleepLine: Timestamp = <Timestamp> "falls" "asleep";
+// WakeLine: Timestamp = <Timestamp> "wakes" "up";
+//
+// SleepEvent: SleepEvent = <s:SleepLine> <w:WakeLine> => SleepEvent{start_time: s.clone(), min: w.min - s.min};
+//
+// pub GuardEvents: GuardEvents = {
+//   // GuardLine SleepEvent SleepEvent+,
+//   <GuardLine> <SleepEvent> <SleepEvent+> => GuardEvents{id: 0, sleep_events: vec!()},
+//   <id:GuardLine> <sleep_events:SleepEvent> => GuardEvents{<>},
+// };
+//
+// pub Events: Events = GuardEvents*;
+
+Num = r"[0-9]+";
+
+#[inline]
+Timestamp = "[" Num "-" Num "-" Num Num ":" Num "]";
+
+#[inline]
+GuardLine = Timestamp "Guard" "#" Num "beings" "shift";
+
+#[inline]
+SleepLine = Timestamp "falls" "asleep";
+
+#[inline]
+WakeLine = Timestamp "wakes" "up";
+
+Sleep = SleepLine WakeLine;
+
+pub Guard: () = {
+  GuardLine Sleep Sleep+,
+  GuardLine Sleep,
+};
+
+pub File = Guard+;

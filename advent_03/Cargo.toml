@@ -1,0 +1,11 @@
+[package]
+name = "advent_03"
+version = "0.1.0"
+authors = ["Alec Thilenius <athilenius@google.com>"]
+edition = "2018"
+
+[dependencies]
+clap = "2.32.0"
+lazy_static = "1.2.0"
+regex = "1.1.0"
+image = "0.21.0"

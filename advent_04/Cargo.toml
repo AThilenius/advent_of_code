@@ -1,0 +1,13 @@
+[package]
+name = "advent_04"
+version = "0.1.0"
+authors = ["Alec Thilenius <athilenius@google.com>"]
+edition = "2018"
+
+[dependencies]
+clap = "2.32.0"
+lalrpop-util = "0.16.3"
+regex = "1.1.0"
+
+[build-dependencies]
+lalrpop = "0.16.3"
