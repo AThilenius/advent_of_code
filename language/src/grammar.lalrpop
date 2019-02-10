@@ -1,0 +1,135 @@
+use std::str::FromStr;
+use crate::ast::{SourceRef, Identifier, Block, Statement, Expression, LiteralValue, BinOp};
+
+grammar;
+
+//==  Root  ====================================================================
+
+pub Program: Block = <l:@L> <s:Statement*> <r:@R> => Block::new(
+    s,
+    Expression::LiteralExpr(LiteralValue::Unit),
+    SourceRef::new(l, r),
+);
+
+
+//==  Terminals  ===============================================================
+
+Literal: LiteralValue = {
+    r"[0-9]+" => LiteralValue::Int64(i64::from_str(<>).unwrap()),
+    // TODO bool, str
+};
+
+ParenList<Val>: Vec<Val> = {
+    "(" ")" => Vec::new(),
+    "(" <p:ParenVal<Val>*> <v:Val> ")" => {
+        let mut vec = p;
+        vec.push(v);
+        vec
+    }
+};
+
+ParenVal<Val> = <Val> ",";
+
+Identifier: Identifier = {
+    <l:@L> <i:r"[a-zA-Z][a-zA-Z0-9_]*"> <r:@R> => Identifier{
+        name: i.to_owned(),
+        source_ref: SourceRef::new(l, r),
+    },
+};
+
+
+//==  Block Scopes  ============================================================
+
+Block: Block = {
+  <l:@L> "{" <s:Statement*> "}" <r:@R> => Block::new(
+      s,
+      Expression::LiteralExpr(LiteralValue::Unit),
+      SourceRef::new(l, r),
+  ),
+  <l:@L> "{" <s:Statement*> <e:Expression> "}" <r:@R> => Block::new(
+      s,
+      e,
+      SourceRef::new(l, r),
+  ),
+};
+
+
+//==  Statements  ==============================================================
+
+Statement: Statement = {
+  "let" <Identifier> "=" <Expression> ";" => Statement::LetStmt(<>),
+  <Expression> ";" => Statement::UnusedExprEvalStmt(<>),
+  FunctionDeclarationStmt,
+  AssignmentStmt,
+};
+
+FunctionDeclarationStmt: Statement = {
+  "fn" <i:Identifier> <p:ParenList<Identifier>> <b:Block> => {
+    Statement::FunctionDeclarationStmt(i, p, Box::new(b))
+  },
+  "fn" <i:Identifier> <b:Block> => {
+    Statement::FunctionDeclarationStmt(i, vec!(), Box::new(b))
+  },
+};
+
+AssignmentStmt: Statement = {
+  <Identifier> "=" <Expression> ";" => Statement::AssignmentStmt(<>),
+}
+
+
+//==  Expression  ==============================================================
+
+pub Expression: Expression = {
+  BinExpression,
+  Block => Expression::BlockExpr(Box::new(<>)),
+  FunctionInvoke,
+}
+
+Term: Expression = {
+    Literal => Expression::LiteralExpr(<>),
+    "(" <Expression> ")",
+    <Identifier> => Expression::IdentifierDerefExpr(<>),
+};
+
+FunctionInvoke: Expression = {
+    <Identifier> <ParenList<Expression>> => Expression::FunctionInvokeExpr(<>),
+}
+
+
+//==  Binary Expressions  ======================================================
+
+TierBinExpression<Op, NextLevel>: Expression = {
+    <b:TierBinExpression<Op, NextLevel>> <o:Op> <n:NextLevel> => Expression::BinExpr(Box::new(b), o, Box::new(n)),
+    NextLevel,
+};
+
+BinExpression = OrExpression;
+
+OrExpression = TierBinExpression<OrOp, AndExpression>;
+AndExpression = TierBinExpression<AndOp, EqExpression>;
+EqExpression = TierBinExpression<EqOp, CmpExpression>;
+CmpExpression = TierBinExpression<CmpOp, AddExpression>;
+AddExpression = TierBinExpression<AddOp, MulExpression>;
+MulExpression = TierBinExpression<MulOp, Term>;
+
+OrOp: BinOp = "||" => BinOp::Or;
+AndOp: BinOp = "&&" => BinOp::And;
+EqOp: BinOp = {
+    "==" => BinOp::Eql,
+    "!=" => BinOp::Neq,
+};
+CmpOp: BinOp = {
+    ">" => BinOp::Gt,
+    ">=" => BinOp::Ge,
+    "<" => BinOp::Lt,
+    "<=" => BinOp::Le,
+};
+AddOp: BinOp = {
+    "+" => BinOp::Plus,
+    "-" => BinOp::Minus,
+};
+MulOp: BinOp = {
+    "*" => BinOp::Star,
+    "/" => BinOp::Slash,
+    "%" => BinOp::Mod,
+};

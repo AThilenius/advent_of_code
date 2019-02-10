@@ -1,0 +1,29 @@
+fn outer() {
+  // Will be captured by-ref.
+  let counter = 42;
+  fn inner() {
+    {
+      // Increment the by-ref closure.
+      counter = counter + 1;
+      // Expression orientation.
+      counter
+    }
+  }
+  // Note that the above form of function declaration is a binding statement
+  // and not an expression.
+  inner
+}
+
+// Create two counters.
+let counter_one = outer();
+let counter_two = outer();
+
+// Increment counter one.
+counter_one();
+counter_one();
+counter_one();
+
+// Increment counter two (which should still be at 42).
+counter_two();
+counter_two();
+counter_two();
