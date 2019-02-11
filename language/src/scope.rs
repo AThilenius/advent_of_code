@@ -17,6 +17,7 @@ pub enum Value {
   Bool(bool),
   // Struct
   // ...
+  BuiltInFunction(fn(Vec<Value>) -> Value),
 }
 
 impl fmt::Debug for Value {
@@ -27,6 +28,20 @@ impl fmt::Debug for Value {
       Value::Int64(v) => write!(f, "i{}", v),
       Value::Str(v) => write!(f, "\"{}\"", v),
       Value::Bool(v) => write!(f, "{}", v),
+      Value::BuiltInFunction(_) => write!(f, "BuiltInFunction"),
+    }
+  }
+}
+
+impl fmt::Display for Value {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Value::Unit => write!(f, "()"),
+      Value::Function(_, params, _) => write!(f, "Function ({:#?})", params),
+      Value::Int64(v) => write!(f, "{}", v),
+      Value::Str(v) => write!(f, "{}", v),
+      Value::Bool(v) => write!(f, "{}", v),
+      Value::BuiltInFunction(_) => write!(f, "BuiltInFunction"),
     }
   }
 }

@@ -3,6 +3,7 @@ use super::scope::*;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fs;
 use std::rc::Rc;
 
 lalrpop_mod!(pub grammar);
@@ -14,13 +15,37 @@ pub struct VM {
 
 impl VM {
   pub fn new() -> VM {
-    VM {
+    let mut vm = VM {
       parser: grammar::ProgramParser::new(),
       global_scope: Rc::new(RefCell::new(Scope {
         parent: None,
         locals: HashMap::new(),
       })),
-    }
+    };
+    vm.add_builtin_function("println", |args| {
+      for arg in args {
+        print!("{} ", arg);
+      }
+      println!();
+      Value::Unit
+    });
+    vm.add_builtin_function("read_file_to_str", |args| {
+      if let Value::Str(ref path) = args[0] {
+        return Value::Str(fs::read_to_string(path).expect("Cannot read file"));
+      }
+      Value::Unit
+    });
+    vm
+  }
+
+  pub fn add_builtin_function(&mut self, name: &str, function: fn(Vec<Value>) -> Value) {
+    (*self.global_scope).borrow_mut().bind_variable(
+      Identifier {
+        name: name.to_owned(),
+        source_ref: SourceRef::new(0, 0),
+      },
+      Value::BuiltInFunction(function),
+    );
   }
 
   pub fn exec(&mut self, source: &str) {
@@ -107,24 +132,30 @@ impl VM {
       }
       Expression::FunctionInvokeExpr(ref identifier, ref args) => {
         let mut function = (**scope).borrow().get_variable(identifier);
-        if let Value::Function(ref mut closure_scope, ref params, ref block) = function {
-          let mut function_scope = push_scope(closure_scope);
-          // Bind parameters directly into child scope
-          if params.len() != args.len() {
-            panic!("Mismatched number of arguments");
+        match function {
+          Value::Function(ref mut closure_scope, ref params, ref block) => {
+            let mut function_scope = push_scope(closure_scope);
+            // Bind parameters directly into child scope
+            if params.len() != args.len() {
+              panic!("Mismatched number of arguments");
+            }
+            for (param, arg_expression) in params.iter().zip(args.iter()) {
+              let arg_value = self.eval_expression_on_scope(scope, arg_expression);
+              (*function_scope)
+                .borrow_mut()
+                .close_variable(param, arg_value);
+            }
+            // Exec the function block
+            self.exec_block_on_scope(&mut function_scope, block)
           }
-          for (param, arg_expression) in params.iter().zip(args.iter()) {
-            let arg_value = self.eval_expression_on_scope(scope, arg_expression);
-            (*function_scope)
-              .borrow_mut()
-              .close_variable(param, arg_value);
-          }
-          // Exec the function block
-          let ret = self.exec_block_on_scope(&mut function_scope, block);
-          println!("Return value: {:#?}", ret);
-          return ret;
+          Value::BuiltInFunction(ref function) => function(
+            args
+              .iter()
+              .map(|arg| self.eval_expression_on_scope(scope, arg))
+              .collect(),
+          ),
+          _ => panic!("Function is not declared {}", identifier.name),
         }
-        panic!("Function is not declared {}", identifier.name);
       }
       Expression::IfElseExpr(ref condition, ref then_block, ref opt_else_block) => {
         if let Value::Bool(c) = self.eval_expression_on_scope(scope, condition) {

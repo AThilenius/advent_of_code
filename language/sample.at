@@ -19,14 +19,18 @@ let counter_one = outer();
 let counter_two = outer();
 
 // Increment counter one.
-counter_one();
-counter_one();
-counter_one();
+println(counter_one());
+println(counter_one());
+println(counter_one());
 
 // Increment counter two (which should still be at 42).
-counter_two();
-counter_two();
-counter_two();
+println(counter_two());
+println(counter_two());
+println(counter_two());
+
+let block_val = {
+  42
+};
 
 fn test_str() { "Hello, world!" }
 test_str();
@@ -60,3 +64,7 @@ fn recursive(times) {
   }
 }
 recursive(4);
+
+println("Hello, world!", 1 + 3 * 5);
+
+let content = read_file_to_str("sample.at");
