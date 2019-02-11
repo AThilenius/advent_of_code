@@ -27,3 +27,36 @@ counter_one();
 counter_two();
 counter_two();
 counter_two();
+
+fn test_str() { "Hello, world!" }
+test_str();
+
+fn test_bool() { true }
+test_bool();
+
+fn test_bool_expr() { true && false || true }
+test_bool_expr();
+
+fn are_equal(left, right) {
+  if left == right { "Yes!" } else { "Nope" }
+}
+are_equal(1, 1);
+are_equal(1, 2);
+
+fn true_fn() { true }
+fn false_fn() { false }
+
+// A if/else statement, note the ";" at the end
+if true {
+  true_fn();
+} else {
+  false_fn();
+};
+
+// Recursive test
+fn recursive(times) {
+  if times > 0 {
+    recursive(times - 1);
+  }
+}
+recursive(4);

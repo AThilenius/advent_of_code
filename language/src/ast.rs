@@ -121,26 +121,6 @@ pub enum Statement {
   FunctionDeclarationStmt(Identifier, Vec<Identifier>, Box<Block>),
 }
 
-impl Statement {
-  fn get_free_variables(&self) -> Vec<&Identifier> {
-    match self {
-      Statement::LetStmt(_, ref expression) => expression.get_free_variables(),
-      Statement::AssignmentStmt(ref variable, ref expression) => {
-        let mut frees = expression.get_free_variables();
-        frees.push(variable);
-        frees
-      }
-      Statement::UnusedExprEvalStmt(expression) => expression.get_free_variables(),
-      Statement::FunctionDeclarationStmt(_, ref args, ref block) => {
-        // TODO: This is wrong. I need to:
-        // Make sure the only free variables in the block == args.
-        // Bind the args.
-        vec![]
-      }
-    }
-  }
-}
-
 /**
  * An expression is always ultimately owned by a Block, but can be nested down
  * in a long expression tree.
@@ -167,6 +147,10 @@ pub enum Expression {
   // The results of evaluating a Block with dynamically scoped params.
   // Ex: returns_42(arg1, arg2)
   FunctionInvokeExpr(Identifier, Vec<Expression>),
+
+  // An if+else (else is require) expression.
+  // Es: let foo = if bar { 1 } else { 2 };
+  IfElseExpr(Box<Expression>, Box<Block>, Option<Box<Block>>),
 }
 
 impl Expression {

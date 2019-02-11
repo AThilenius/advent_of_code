@@ -91,6 +91,8 @@ impl VM {
           // Boolean Operations
           (BinOp::Eql, Value::Bool(l), Value::Bool(r)) => Value::Bool(l == r),
           (BinOp::Neq, Value::Bool(l), Value::Bool(r)) => Value::Bool(l != r),
+          (BinOp::And, Value::Bool(l), Value::Bool(r)) => Value::Bool(l && r),
+          (BinOp::Or, Value::Bool(l), Value::Bool(r)) => Value::Bool(l || r),
 
           // Unsupported operations
           _ => panic!(format!("Failed to eval binary expression {:?}", expression)),
@@ -123,6 +125,21 @@ impl VM {
           return ret;
         }
         panic!("Function is not declared {}", identifier.name);
+      }
+      Expression::IfElseExpr(ref condition, ref then_block, ref opt_else_block) => {
+        if let Value::Bool(c) = self.eval_expression_on_scope(scope, condition) {
+          let mut child_scope = push_scope(scope);
+          if c {
+            return self.exec_block_on_scope(&mut child_scope, then_block);
+          } else {
+            if let Some(else_block) = opt_else_block {
+              return self.exec_block_on_scope(&mut child_scope, else_block);
+            } else {
+              return Value::Unit;
+            }
+          }
+        }
+        panic!("Condition is not a boolean expression: {:#?}", condition);
       }
     }
   }

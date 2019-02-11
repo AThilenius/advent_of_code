@@ -16,7 +16,9 @@ pub Program: Block = <l:@L> <s:Statement*> <r:@R> => Block::new(
 
 Literal: LiteralValue = {
     r"[0-9]+" => LiteralValue::Int64(i64::from_str(<>).unwrap()),
-    // TODO bool, str
+    r#""[^"]*""# => LiteralValue::Str(<>[1..<>.len() - 1].to_owned()),
+    "true" => LiteralValue::Bool(true),
+    "false" => LiteralValue::Bool(false),
 };
 
 ParenList<Val>: Vec<Val> = {
@@ -61,6 +63,7 @@ Statement: Statement = {
   <Expression> ";" => Statement::UnusedExprEvalStmt(<>),
   FunctionDeclarationStmt,
   AssignmentStmt,
+  // IfElseStmt,
 };
 
 FunctionDeclarationStmt: Statement = {
@@ -74,7 +77,7 @@ FunctionDeclarationStmt: Statement = {
 
 AssignmentStmt: Statement = {
   <Identifier> "=" <Expression> ";" => Statement::AssignmentStmt(<>),
-}
+};
 
 
 //==  Expression  ==============================================================
@@ -83,7 +86,9 @@ pub Expression: Expression = {
   BinExpression,
   Block => Expression::BlockExpr(Box::new(<>)),
   FunctionInvoke,
-}
+  "if" <c:Expression> <t:Block> "else" <e:Block> => Expression::IfElseExpr(Box::new(c), Box::new(t), Some(Box::new(e))),
+  "if" <c:Expression> <t:Block> => Expression::IfElseExpr(Box::new(c), Box::new(t), None),
+};
 
 Term: Expression = {
     Literal => Expression::LiteralExpr(<>),
@@ -93,8 +98,7 @@ Term: Expression = {
 
 FunctionInvoke: Expression = {
     <Identifier> <ParenList<Expression>> => Expression::FunctionInvokeExpr(<>),
-}
-
+};
 
 //==  Binary Expressions  ======================================================
 
