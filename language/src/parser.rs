@@ -5,25 +5,17 @@ use colored::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Bound::*;
+use std::sync::Mutex;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TokenError {
   pub start: usize,
   pub message: String,
 }
 
-pub type ProductionFn<T> = fn(
-  &str,
-  &mut std::collections::HashMap<&'static str, regex::Regex>,
-  &mut usize,
-) -> Result<T, crate::parser::TokenError>;
+pub type ProductionFn<T> = fn(&str, &mut usize) -> Result<T, crate::parser::TokenError>;
 
-pub fn match_regex<'a>(
-  re_text: &'static str,
-  source: &'a str,
-  regex_atlas: &mut HashMap<&'static str, Regex>,
-  offset: &mut usize,
-) -> Result<&'a str, TokenError> {
+fn consume_whitespace(source: &str, offset: &mut usize) {
   let mut stream = &source[*offset as usize..];
   // Skip whitespace and comments
   lazy_static! {
@@ -41,9 +33,15 @@ pub fn match_regex<'a>(
       break;
     }
   }
-  let re = regex_atlas
-    .entry(re_text)
-    .or_insert_with(|| Regex::new(&format!(r"^\s*{}", re_text)).unwrap());
+}
+
+pub fn match_regex<'a>(
+  re: &Regex,
+  source: &'a str,
+  offset: &mut usize,
+) -> Result<&'a str, TokenError> {
+  consume_whitespace(source, offset);
+  let stream = &source[*offset as usize..];
   match re.find(stream) {
     Some(mat) => {
       let one = &stream[mat.start()..mat.end()];
@@ -52,7 +50,7 @@ pub fn match_regex<'a>(
     }
     None => Err(TokenError {
       start: *offset,
-      message: format!("Expected {} here.", re_text),
+      message: format!("Expected {} here.", re),
     }),
   }
 }
@@ -79,15 +77,14 @@ fn range_to_allowed_match_count(
 pub fn match_regex_range<'a>(
   lower_bound: std::collections::Bound<&i32>,
   upper_bound: std::collections::Bound<&i32>,
-  re_text: &'static str,
+  re: &Regex,
   source: &'a str,
-  regex_atlas: &mut HashMap<&'static str, Regex>,
   offset: &mut usize,
 ) -> Result<Vec<&'a str>, TokenError> {
   let (min, max) = range_to_allowed_match_count(lower_bound, upper_bound);
   let mut matches = vec![];
   for i in 0.. {
-    let res = match_regex(re_text, source, regex_atlas, offset);
+    let res = match_regex(re, source, offset);
     match res {
       Ok(mat) => {
         matches.push(mat);
@@ -109,18 +106,17 @@ pub fn match_regex_range<'a>(
 }
 
 #[allow(dead_code)]
-pub fn match_ident_range<'a, T>(
+pub fn match_ident_range<T>(
   lower_bound: std::collections::Bound<&i32>,
   upper_bound: std::collections::Bound<&i32>,
   production_fn: ProductionFn<T>,
-  source: &'a str,
-  regex_atlas: &mut HashMap<&'static str, Regex>,
+  source: &str,
   offset: &mut usize,
 ) -> Result<Vec<T>, TokenError> {
   let (min, max) = range_to_allowed_match_count(lower_bound, upper_bound);
   let mut matches = vec![];
   for i in 0.. {
-    let res = production_fn(source, regex_atlas, offset);
+    let res = production_fn(source, offset);
     match res {
       Ok(mat) => {
         matches.push(mat);
@@ -141,82 +137,17 @@ pub fn match_ident_range<'a, T>(
   unreachable!();
 }
 
-/**
- * Matches a single production arm expression, like name:[0..1; r"foobar"] or _:[ident].
- */
-macro_rules! production_match_expressions {
-  ([$name:ident], $src:ident, $regex_atlas:ident, $offset:ident) => {{
-    $name($src, $regex_atlas, &mut $offset)?
-  }};
-  ([$regex:expr], $src:ident, $regex_atlas:ident, $offset:ident) => {{
-    crate::parser::match_regex(&$regex, $src, $regex_atlas, &mut $offset)?
-  }};
-  ([$num:expr; $name:ident], $src:ident, $regex_atlas:ident, $offset:ident) => {{
-    crate::parser::match_ident_range(
-      std::ops::RangeBounds::start_bound(&$num),
-      std::ops::RangeBounds::end_bound(&$num),
-      $name,
-      $src,
-      $regex_atlas,
-      &mut $offset,
-    )?
-  }};
-  ([$num:expr; $regex:expr], $src:ident, $regex_atlas:ident, $offset:ident) => {{
-    crate::parser::match_regex_range(
-      std::ops::RangeBounds::start_bound(&$num),
-      std::ops::RangeBounds::end_bound(&$num),
-      &$regex,
-      $src,
-      $regex_atlas,
-      &mut $offset,
-    )?
-  }};
-}
-
-/**
- * The main productions macro. This enumerates each production and creates a fn for it.
- */
-macro_rules! productions {
-  (
-    $(
-      $name:ident -> $ret_type:ty {
-        $(
-          { $( $mat_name:tt: $decl:tt )* } => $ret_expr:expr
-        ),* $(,)*
-      }
-    )*
-  ) => {
-    $(
-      fn $name<'a>(
-          source: &'a str,
-          regex_atlas: &mut std::collections::HashMap<&'static str, regex::Regex>,
-          offset: &mut usize)
-        -> Result<$ret_type, crate::parser::TokenError> {
-        #[allow(unused_assignments)]
-        let mut arm_results: Result<$ret_type, crate::parser::TokenError> = Err(
-          crate::parser::TokenError{start: *offset, message: "No match arms specified in production.".to_owned()}
-        );
-        $(
-          arm_results = || -> Result<$ret_type, crate::parser::TokenError> {
-            // Offset is not advanced unless the entire arm matches.
-            let mut local_offset = *offset;
-            // A single production arm
-            $(
-              let $mat_name = production_match_expressions!{
-                $decl, source, regex_atlas, local_offset};
-            )*
-            // The entire arm matched, we can advance offset.
-            *offset = local_offset;
-            return Ok($ret_expr);
-          }();
-          if let Ok(res) = arm_results {
-            return Ok(res);
-          }
-        )*
-        arm_results
-      }
-    )*
-  };
+// Builtin productions
+pub fn end_of_input(source: &str, offset: &mut usize) -> Result<bool, crate::parser::TokenError> {
+  consume_whitespace(source, offset);
+  if *offset == source.len() {
+    Ok(true)
+  } else {
+    Err(TokenError {
+      start: *offset,
+      message: "expected end of input".to_owned(),
+    })
+  }
 }
 
 pub struct Parser {
@@ -230,13 +161,9 @@ impl Parser {
     }
   }
 
-  pub fn parse_or_log_errors<'a, T>(
-    &mut self,
-    production: ProductionFn<T>,
-    source: &'a str,
-  ) -> Option<T> {
+  pub fn parse_or_log_errors<T>(&mut self, production: ProductionFn<T>, source: &str) -> Option<T> {
     let mut offset = 0;
-    let res = production(source, &mut self.regex_atlas, &mut offset);
+    let res = production(source, &mut offset);
     match res {
       Ok(prod) => Some(prod),
       Err(err) => {
@@ -272,4 +199,119 @@ impl Parser {
       }
     }
   }
+}
+
+/**
+ * Matches a single production arm expression, like name:[0..1; r"foobar"] or _:[ident].
+ */
+macro_rules! production_match_expressions {
+  ([$name:ident], $src:ident, $offset:ident) => {{
+    $name($src, &mut $offset)?
+  }};
+  ([$regex:expr], $src:ident, $offset:ident) => {{
+    lazy_static! {
+      static ref RE: regex::Regex = regex::Regex::new(&format!(r"^\s*{}", $regex)).unwrap();
+    }
+    crate::parser::match_regex(&RE, $src, &mut $offset)?
+  }};
+  ([$num:expr; $name:ident], $src:ident, $offset:ident) => {{
+    crate::parser::match_ident_range(
+      std::ops::RangeBounds::start_bound(&$num),
+      std::ops::RangeBounds::end_bound(&$num),
+      $name,
+      $src,
+      &mut $offset,
+    )?
+  }};
+  ([$num:expr; $regex:expr], $src:ident, $offset:ident) => {{
+    lazy_static! {
+      static ref RE: regex::Regex = regex::Regex::new(&format!(r"^\s*{}", $regex)).unwrap();
+    }
+    crate::parser::match_regex_range(
+      std::ops::RangeBounds::start_bound(&$num),
+      std::ops::RangeBounds::end_bound(&$num),
+      &RE,
+      $src,
+      &mut $offset,
+    )?
+  }};
+}
+
+#[derive(Clone)]
+enum TestEnum {}
+
+/**
+ * The main productions macro. This enumerates each production and creates a fn for it.
+ */
+macro_rules! productions {
+  (
+    $(
+      $name:ident -> $ret_type:ty {
+        $(
+          { $( $mat_name:tt: $decl:tt )* } => $ret_expr:expr
+        ),* $(,)*
+      }
+    )*
+  ) => {
+    $(
+        #[allow(dead_code)]
+        pub fn $name(
+            source: &str,
+            offset: &mut usize
+        ) -> Result<$ret_type, crate::parser::TokenError> {
+          use std::collections::HashMap;
+          use std::sync::Mutex;
+          lazy_static! {
+            static ref CACHE: Mutex<HashMap<
+              usize,
+              Result<(usize, $ret_type), crate::parser::TokenError>>>
+              = Mutex::new(HashMap::new());
+          }
+          // Return memoized cache if we have one (also need to increment offset).
+          if let Some(ref cache) = CACHE.lock().unwrap().get(&offset) {
+            match cache.clone() {
+              Ok((new_offset, v)) => {
+                *offset = *new_offset;
+                 return Ok(v.to_owned());
+              }
+              Err(e) => return Err(e.to_owned()),
+            }
+          }
+          #[allow(unused_assignments)]
+          let no_arm_err = crate::parser::TokenError{
+            start: *offset,
+            message: "No match arms specified in production.".to_owned()
+          };
+          let mut arm_results: Result<$ret_type, crate::parser::TokenError> = Err(no_arm_err.clone());
+          let mut all_errors = vec![];
+          all_errors.push(no_arm_err);
+          $(
+            arm_results = || -> Result<$ret_type, crate::parser::TokenError> {
+              // Offset is not advanced unless the entire arm matches.
+              let mut local_offset = *offset;
+              // A single production arm
+              $(
+                let $mat_name = production_match_expressions!{$decl, source, local_offset};
+              )*
+              // The entire arm matched, we can advance offset.
+              let final_expression_value = $ret_expr;
+              CACHE.lock().unwrap().insert(*offset, Ok((local_offset, final_expression_value.clone())));
+              *offset = local_offset;
+              return Ok(final_expression_value);
+            }();
+            match arm_results {
+              Ok(res) => {
+                return Ok(res);
+              },
+              Err(err) => all_errors.push(err),
+            }
+          )*
+          // Return the longest error
+          let longest_error = all_errors.iter().max_by_key(|e| e.start).unwrap();
+          CACHE.lock().unwrap().insert(*offset, Err(longest_error.clone()));
+          Err(longest_error.clone())
+        }
+
+    )*
+  };
 }

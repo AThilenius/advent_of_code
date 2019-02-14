@@ -14,57 +14,75 @@ fn outer() {
   inner
 }
 
-// Create two counters.
-let counter_one = outer();
-let counter_two = outer();
+fn large_test() {
 
-// Increment counter one.
-println(counter_one());
-println(counter_one());
-println(counter_one());
+  // Unary tests
+  let or = false || true;
+  let and = true && true;
+  let eq = 42 == 42;
+  let neq = 24 != 42;
+  let gt = 42 > 24;
+  let lt = 24 < 42;
+  let ge = 42 >= 42;
+  let le = 42 <= 42;
+  let add = 1 + 2 + 3;
+  let sub = 1 - 2 -3;
+  let mul = 1 * 2 * 3;
+  let div = 1 / 2 / 3;
+  let order = 1 * 2 + 3;
 
-// Increment counter two (which should still be at 42).
-println(counter_two());
-println(counter_two());
-println(counter_two());
-
-let block_val = {
-  42
-};
-
-fn test_str() { "Hello, world!" }
-test_str();
-
-fn test_bool() { true }
-test_bool();
-
-fn test_bool_expr() { true && false || true }
-test_bool_expr();
-
-fn are_equal(left, right) {
-  if left == right { "Yes!" } else { "Nope" }
+// // Create two counters.
+// let counter_one = outer();
+// let counter_two = outer();
+//
+// // Increment counter one.
+// println(counter_one());
+// println(counter_one());
+// println(counter_one());
+//
+// // Increment counter two (which should still be at 42).
+// println(counter_two());
+// println(counter_two());
+// println(counter_two());
+//
+// let block_val = {
+//   42
+// };
+//
+// fn test_str() { "Hello, world!" }
+// test_str();
+//
+// fn test_bool() { true }
+// test_bool();
+//
+// fn test_bool_expr() { true && false || true }
+// test_bool_expr();
+//
+// fn are_equal(left, right) {
+//   if left == right { "Yes!" } else { "Nope" }
+// }
+// are_equal(1, 1);
+// are_equal(1, 2);
+//
+// fn true_fn() { true }
+// fn false_fn() { false }
+//
+// // A if/else statement, note the ";" at the end
+// if true {
+//   true_fn();
+// } else {
+//   false_fn();
+// };
+//
+// // Recursive test
+// fn recursive(times) {
+//   if times > 0 {
+//     recursive(times - 1);
+//   }
+// }
+// recursive(4);
+//
+// println("Hello, world!", 1 + 3 * 5);
+//
+// let content = read_file_to_str("sample.at");
 }
-are_equal(1, 1);
-are_equal(1, 2);
-
-fn true_fn() { true }
-fn false_fn() { false }
-
-// A if/else statement, note the ";" at the end
-if true {
-  true_fn();
-} else {
-  false_fn();
-};
-
-// Recursive test
-fn recursive(times) {
-  if times > 0 {
-    recursive(times - 1);
-  }
-}
-recursive(4);
-
-println("Hello, world!", 1 + 3 * 5);
-
-let content = read_file_to_str("sample.at");
