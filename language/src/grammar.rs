@@ -83,24 +83,24 @@ productions! {
   }
 
   if_else_statement -> Statement {
+    { _:[r"if"] condition:[expression] then_block:[code_block_expression]
+        _:[r"else"] else_block:[code_block_expression] }
+        => Statement::IfElseStmt(condition, then_block, Some(else_block)),
     { _:[r"if"] condition:[expression] then_block:[code_block_expression] }
         => Statement::IfElseStmt(condition, then_block, None),
-    { _:[r"if"] condition:[expression] then_block:[code_block_expression] _:[r"else"] else_block:[code_block_expression] }
-        => Statement::IfElseStmt(condition, then_block, Some(else_block)),
   }
 
   // Expressions
   expression -> Expression {
-    { unary:[unary_expression] } => unary,
-    { ident:[ident] } => Expression::IdentDerefExpr(ident),
     { if_else:[if_else_expression] } => if_else,
     { block:[code_block_expression] } => Expression::CodeBlockExpr(Box::new(block)),
+    { unary:[unary_expression] } => unary,
+    { ident:[ident] } => Expression::IdentDerefExpr(ident),
   }
 
   if_else_expression -> Expression {
-    { _:[r"if"] condition:[expression] then_block:[code_block_expression] }
-        => Expression::IfElseExpr(Box::new(condition), Box::new(then_block), None),
-    { _:[r"if"] condition:[expression] then_block:[code_block_expression] _:[r"else"] else_block:[code_block_expression] }
+    { _:[r"if"] condition:[expression] then_block:[code_block_expression]
+        _:[r"else"] else_block:[code_block_expression] }
         => Expression::IfElseExpr(Box::new(condition), Box::new(then_block), Some(Box::new(else_block))),
   }
 
@@ -173,6 +173,8 @@ productions! {
         => Expression::BinaryExpr(Box::new(l), BinaryOp::Star, Box::new(r)),
     { l:[unary_atom] _:[r"/"] r:[product_expression] }
         => Expression::BinaryExpr(Box::new(l), BinaryOp::Slash, Box::new(r)),
+    { l:[unary_atom] _:[r"%"] r:[product_expression] }
+        => Expression::BinaryExpr(Box::new(l), BinaryOp::Mod, Box::new(r)),
     { a:[unary_atom] } => a,
   }
 

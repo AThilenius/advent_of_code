@@ -1,9 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
-#[macro_use]
-extern crate cached;
 extern crate clap;
 extern crate regex;
+extern crate md5;
 
 #[macro_use]
 mod parser;

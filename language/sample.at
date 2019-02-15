@@ -15,8 +15,6 @@ fn outer() {
 }
 
 fn large_test() {
-
-  // Unary tests
   let or = false || true;
   let and = true && true;
   let eq = 42 == 42;
@@ -29,7 +27,22 @@ fn large_test() {
   let sub = 1 - 2 -3;
   let mul = 1 * 2 * 3;
   let div = 1 / 2 / 3;
+  let mul = 1 % 2 % 3;
   let order = 1 * 2 + 3;
+
+  // If statements
+  if 42 == 42 {
+    let thing = 1;
+  }
+
+  if 42 == 42 {
+    let thing = 1;
+  } else {
+    let thing = 42;
+  }
+
+  // If expression (ternary)
+  let foo = if true { 1 } else { 2 };
 
 // // Create two counters.
 // let counter_one = outer();

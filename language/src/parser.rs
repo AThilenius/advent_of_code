@@ -5,15 +5,30 @@ use colored::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Bound::*;
-use std::sync::Mutex;
 
-#[derive(Debug, Clone)]
-pub struct TokenError {
-  pub start: usize,
-  pub message: String,
+// #[derive(Debug, Clone)]
+// pub struct TokenError {
+//   pub start: usize,
+//   pub message: String,
+// }
+
+// impl TokenError {
+//   pub fn new(start: usize, message: String) -> TokenError {
+//     println!("Token error at: {}\t{}", start, message);
+//     TokenError {
+//       start: start,
+//       message: message,
+//     }
+//   }
+// }
+
+pub struct MetaData {
+  pub source_md5: md5::Digest,
+  pub longest_offset: usize,
+  pub error_at_longest: String,
 }
 
-pub type ProductionFn<T> = fn(&str, &mut usize) -> Result<T, crate::parser::TokenError>;
+pub type ProductionFn<T> = fn(&str, meta: &mut MetaData, &mut usize) -> Option<T>;
 
 fn consume_whitespace(source: &str, offset: &mut usize) {
   let mut stream = &source[*offset as usize..];
@@ -38,20 +53,25 @@ fn consume_whitespace(source: &str, offset: &mut usize) {
 pub fn match_regex<'a>(
   re: &Regex,
   source: &'a str,
+  meta: &mut MetaData,
   offset: &mut usize,
-) -> Result<&'a str, TokenError> {
+) -> Option<&'a str> {
   consume_whitespace(source, offset);
   let stream = &source[*offset as usize..];
   match re.find(stream) {
     Some(mat) => {
       let one = &stream[mat.start()..mat.end()];
       *offset = *offset + mat.end();
-      Ok(one)
+      Some(one)
     }
-    None => Err(TokenError {
-      start: *offset,
-      message: format!("Expected {} here.", re),
-    }),
+    // Err(TokenError::new(*offset, format!("Expected {} here.", re))),
+    None => {
+      if *offset > meta.longest_offset {
+        meta.longest_offset = *offset;
+        meta.error_at_longest = format!("Failed to match regex: {}", re);
+      }
+      None
+    }
   }
 }
 
@@ -79,26 +99,27 @@ pub fn match_regex_range<'a>(
   upper_bound: std::collections::Bound<&i32>,
   re: &Regex,
   source: &'a str,
+  meta: &mut MetaData,
   offset: &mut usize,
-) -> Result<Vec<&'a str>, TokenError> {
+) -> Option<Vec<&'a str>> {
   let (min, max) = range_to_allowed_match_count(lower_bound, upper_bound);
   let mut matches = vec![];
   for i in 0.. {
-    let res = match_regex(re, source, offset);
+    let res = match_regex(re, source, meta, offset);
     match res {
-      Ok(mat) => {
+      Some(mat) => {
         matches.push(mat);
         // If we hit the upper bound return out, otherwise carry on matching
         if max >= 0 && i + 1 >= max {
-          return Ok(matches);
+          return Some(matches);
         }
       }
-      Err(e) => {
+      None => {
         // If we met at least out minimum, return Ok. Otherwise it failed to match
         if i >= min {
-          return Ok(matches);
+          return Some(matches);
         }
-        return Err(e);
+        return None;
       }
     }
   }
@@ -111,26 +132,27 @@ pub fn match_ident_range<T>(
   upper_bound: std::collections::Bound<&i32>,
   production_fn: ProductionFn<T>,
   source: &str,
+  meta: &mut MetaData,
   offset: &mut usize,
-) -> Result<Vec<T>, TokenError> {
+) -> Option<Vec<T>> {
   let (min, max) = range_to_allowed_match_count(lower_bound, upper_bound);
   let mut matches = vec![];
   for i in 0.. {
-    let res = production_fn(source, offset);
+    let res = production_fn(source, meta, offset);
     match res {
-      Ok(mat) => {
+      Some(mat) => {
         matches.push(mat);
         // If we hit the upper bound return out, otherwise carry on matching
         if max >= 0 && i + 1 >= max {
-          return Ok(matches);
+          return Some(matches);
         }
       }
-      Err(e) => {
+      None => {
         // If we met at least out minimum, return Ok. Otherwise it failed to match
         if i >= min {
-          return Ok(matches);
+          return Some(matches);
         }
-        return Err(e);
+        return None;
       }
     }
   }
@@ -138,62 +160,68 @@ pub fn match_ident_range<T>(
 }
 
 // Builtin productions
-pub fn end_of_input(source: &str, offset: &mut usize) -> Result<bool, crate::parser::TokenError> {
+pub fn end_of_input(source: &str, _meta: &mut MetaData, offset: &mut usize) -> Option<bool> {
   consume_whitespace(source, offset);
   if *offset == source.len() {
-    Ok(true)
+    Some(true)
   } else {
-    Err(TokenError {
-      start: *offset,
-      message: "expected end of input".to_owned(),
-    })
+    None
   }
 }
 
-pub struct Parser {
-  regex_atlas: HashMap<&'static str, Regex>,
-}
+pub struct Parser {}
 
 impl Parser {
   pub fn new() -> Parser {
-    Parser {
-      regex_atlas: HashMap::new(),
-    }
+    Parser {}
   }
 
   pub fn parse_or_log_errors<T>(&mut self, production: ProductionFn<T>, source: &str) -> Option<T> {
     let mut offset = 0;
-    let res = production(source, &mut offset);
+    let mut meta = MetaData {
+      source_md5: md5::compute(source),
+      longest_offset: 0,
+      error_at_longest: "Failed to start parser".to_owned(),
+    };
+    let res = production(source, &mut meta, &mut offset);
     match res {
-      Ok(prod) => Some(prod),
-      Err(err) => {
+      Some(prod) => Some(prod),
+      None => {
         // Get the entire line where the error happened
         let mut line_offsets = vec![];
         let mut i = 0;
         for line in source.lines() {
-          line_offsets.push((line, i, i + line.len()));
-          i += line.len();
+          // Need to add 1 for the newline character that got trimmed
+          line_offsets.push((line, i, i + line.len() + 1));
+          i += line.len() + 1;
         }
         // Find the line
         let mut on_line = 0;
         let target_line_search = line_offsets.iter().find(|(_, s, e)| {
           on_line += 1;
-          *s <= err.start && *e >= err.start
+          *s <= meta.longest_offset && *e >= meta.longest_offset
         });
         if let Some((line, s, _)) = target_line_search {
           println!();
           println!(
             "Failed to parse line {}, column {}:",
             on_line,
-            err.start - *s
+            meta.longest_offset - *s
           );
           println!("{}", line.blue());
-          let offset_in_line = err.start - *s;
+          let offset_in_line = meta.longest_offset - *s;
           for _ in 0..offset_in_line {
             print!(" ");
           }
-          println!("^ {}", err.message.red());
+          println!("^ {}", meta.error_at_longest.red());
           println!();
+        } else {
+          println!(
+            "Failed at {}/{} with: {}",
+            meta.longest_offset,
+            source.len(),
+            meta.error_at_longest.red()
+          );
         }
         None
       }
@@ -205,25 +233,26 @@ impl Parser {
  * Matches a single production arm expression, like name:[0..1; r"foobar"] or _:[ident].
  */
 macro_rules! production_match_expressions {
-  ([$name:ident], $src:ident, $offset:ident) => {{
-    $name($src, &mut $offset)?
+  ([$name:ident], $src:ident, $meta:ident, $offset:ident) => {{
+    $name($src, $meta, &mut $offset)?
   }};
-  ([$regex:expr], $src:ident, $offset:ident) => {{
+  ([$regex:expr], $src:ident, $meta:ident, $offset:ident) => {{
     lazy_static! {
-      static ref RE: regex::Regex = regex::Regex::new(&format!(r"^\s*{}", $regex)).unwrap();
+      static ref RE: regex::Regex = regex::Regex::new(&format!(r"^{}", $regex)).unwrap();
     }
-    crate::parser::match_regex(&RE, $src, &mut $offset)?
+    crate::parser::match_regex(&RE, $src, $meta, &mut $offset)?
   }};
-  ([$num:expr; $name:ident], $src:ident, $offset:ident) => {{
+  ([$num:expr; $name:ident], $src:ident, $meta:ident, $offset:ident) => {{
     crate::parser::match_ident_range(
       std::ops::RangeBounds::start_bound(&$num),
       std::ops::RangeBounds::end_bound(&$num),
       $name,
       $src,
+      $meta,
       &mut $offset,
     )?
   }};
-  ([$num:expr; $regex:expr], $src:ident, $offset:ident) => {{
+  ([$num:expr; $regex:expr], $src:ident, $meta:ident, $offset:ident) => {{
     lazy_static! {
       static ref RE: regex::Regex = regex::Regex::new(&format!(r"^\s*{}", $regex)).unwrap();
     }
@@ -232,13 +261,11 @@ macro_rules! production_match_expressions {
       std::ops::RangeBounds::end_bound(&$num),
       &RE,
       $src,
+      $meta,
       &mut $offset,
     )?
   }};
 }
-
-#[derive(Clone)]
-enum TestEnum {}
 
 /**
  * The main productions macro. This enumerates each production and creates a fn for it.
@@ -257,59 +284,49 @@ macro_rules! productions {
         #[allow(dead_code)]
         pub fn $name(
             source: &str,
+            meta: &mut crate::parser::MetaData,
             offset: &mut usize
-        ) -> Result<$ret_type, crate::parser::TokenError> {
+        ) -> Option<$ret_type> {
           use std::collections::HashMap;
           use std::sync::Mutex;
           lazy_static! {
             static ref CACHE: Mutex<HashMap<
-              usize,
-              Result<(usize, $ret_type), crate::parser::TokenError>>>
+              (md5::Digest, usize), Option<(usize, $ret_type)>>>
               = Mutex::new(HashMap::new());
           }
           // Return memoized cache if we have one (also need to increment offset).
-          if let Some(ref cache) = CACHE.lock().unwrap().get(&offset) {
+          if let Some(ref cache) = CACHE.lock().unwrap().get(&(meta.source_md5, *offset)) {
             match cache.clone() {
-              Ok((new_offset, v)) => {
+              Some((new_offset, v)) => {
                 *offset = *new_offset;
-                 return Ok(v.to_owned());
+                 return Some(v.to_owned());
               }
-              Err(e) => return Err(e.to_owned()),
+              None => return None
             }
           }
           #[allow(unused_assignments)]
-          let no_arm_err = crate::parser::TokenError{
-            start: *offset,
-            message: "No match arms specified in production.".to_owned()
-          };
-          let mut arm_results: Result<$ret_type, crate::parser::TokenError> = Err(no_arm_err.clone());
-          let mut all_errors = vec![];
-          all_errors.push(no_arm_err);
+          let mut arm_results: Option<$ret_type> = None;
           $(
-            arm_results = || -> Result<$ret_type, crate::parser::TokenError> {
+            arm_results = || -> Option<$ret_type> {
               // Offset is not advanced unless the entire arm matches.
               let mut local_offset = *offset;
               // A single production arm
               $(
-                let $mat_name = production_match_expressions!{$decl, source, local_offset};
+                let $mat_name = production_match_expressions!{$decl, source, meta, local_offset};
               )*
               // The entire arm matched, we can advance offset.
               let final_expression_value = $ret_expr;
-              CACHE.lock().unwrap().insert(*offset, Ok((local_offset, final_expression_value.clone())));
+              CACHE.lock().unwrap().insert((meta.source_md5, *offset),
+                  Some((local_offset, final_expression_value.clone())));
               *offset = local_offset;
-              return Ok(final_expression_value);
+              return Some(final_expression_value);
             }();
-            match arm_results {
-              Ok(res) => {
-                return Ok(res);
-              },
-              Err(err) => all_errors.push(err),
+            if let Some(res) = arm_results {
+              return Some(res);
             }
           )*
-          // Return the longest error
-          let longest_error = all_errors.iter().max_by_key(|e| e.start).unwrap();
-          CACHE.lock().unwrap().insert(*offset, Err(longest_error.clone()));
-          Err(longest_error.clone())
+          CACHE.lock().unwrap().insert((meta.source_md5, *offset), None);
+          None
         }
 
     )*

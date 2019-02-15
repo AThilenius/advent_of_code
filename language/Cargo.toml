@@ -5,8 +5,8 @@ authors = ["Alec Thilenius <alec@thilenius.com>"]
 edition = "2018"
 
 [dependencies]
-cached = "0.8.0"
 clap = "2.32.0"
 colored = "1.7.0"
 lazy_static = "1.2.0"
+md5 = "0.6.1"
 regex = "1.1.0"
