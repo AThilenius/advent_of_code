@@ -1,0 +1,9 @@
+[package]
+name = "perflab"
+version = "0.1.0"
+authors = ["Alec Thilenius <athilenius@google.com>"]
+edition = "2018"
+
+[dependencies]
+bmp = "0.4.0"
+tsc-timer = "0.1.5"
