@@ -3,7 +3,8 @@ set -e
 
 BASEDIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
+mkdir -p "${BASEDIR}/build"
 cd "${BASEDIR}/build"
 cmake ..
 make
-./perflab "${BASEDIR}/blocks-small.bmp"
+./perflab vline "${BASEDIR}/blocks-small.bmp"
