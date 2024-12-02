@@ -76,12 +76,12 @@ export def main [
 
   let left = $lines
     | get left
-    | each { $in | into int }
+    | into int
     | sort
 
   let right = $lines
     | get right
-    | each { $in | into int }
+    | into int
     | sort
 
   $left 
